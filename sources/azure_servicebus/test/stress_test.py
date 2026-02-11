@@ -1,3 +1,4 @@
+# pylint: disable=too-many-lines
 """
 Production Stress Tests for Azure Service Bus Connector
 
@@ -40,8 +41,8 @@ import pytest
 # Add project root to path so we can import the connector
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from sources.azure_servicebus.azure_servicebus import LakeflowConnect
-from sources.azure_servicebus.test.stress_test_utils import (
+from sources.azure_servicebus.azure_servicebus import LakeflowConnect  # pylint: disable=wrong-import-position
+from sources.azure_servicebus.test.stress_test_utils import (  # pylint: disable=wrong-import-position
     StressTestResources,
     send_messages_bulk,
     dead_letter_messages,
@@ -74,7 +75,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 class TestScaleMessages:
     """Test connector with large message volumes (1K, 5K, 10K)."""
 
-    def _run_scale_test(
+    def _run_scale_test(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self, resources, connection_string, queue_name, msg_count, max_message_count=100
     ):
         """Helper: send N messages, read them all, verify counts and no duplicates."""
@@ -184,7 +185,10 @@ class TestScaleMessages:
 class TestLargeMessageBodies:
     """Test connector with various message body types and sizes."""
 
-    def _setup_and_read(self, resources, connection_string, queue_name, count, body_gen, content_type="application/json"):
+    def _setup_and_read(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self, resources, connection_string, queue_name, count, body_gen,
+        content_type="application/json",
+    ):
         """Helper: create queue, send messages, read via connector."""
         resources.create_queue(queue_name)
         time.sleep(2)
@@ -357,7 +361,7 @@ class TestConcurrentResources:
             connector.close()
 
     @pytest.mark.timeout(300)
-    def test_many_topics_and_subscriptions(self, resources, connection_string):
+    def test_many_topics_and_subscriptions(self, resources, connection_string):  # pylint: disable=too-many-locals
         """Create 5 topics with 3 subscriptions each, verify metadata."""
         num_topics = 5
         subs_per_topic = 3
@@ -528,7 +532,10 @@ class TestErrorResilience:
         """Invalid connection string should raise a clear error, not hang."""
         with pytest.raises((ValueError, Exception)):
             connector = LakeflowConnect(
-                {"connection_string": "Endpoint=sb://invalid.servicebus.windows.net/;SharedAccessKeyName=bad;SharedAccessKey=bad"}
+                {"connection_string": (
+                    "Endpoint=sb://invalid.servicebus.windows.net/;"
+                    "SharedAccessKeyName=bad;SharedAccessKey=bad"
+                )}
             )
             records, _ = connector.read_table("queues", {}, {})
             list(records)
@@ -729,13 +736,14 @@ class TestMessagePropertyEdgeCases:
 
     def _send_custom_message(self, sender, body, **kwargs):
         """Send a single message with custom properties."""
+        from azure.servicebus import ServiceBusMessage  # pylint: disable=import-error,import-outside-toplevel
         msg = ServiceBusMessage(body=body, **kwargs)
         sender.send_messages(msg)
 
     @pytest.mark.timeout(120)
     def test_all_optional_properties(self, resources, connection_string):
         """Messages with all optional properties set."""
-        from azure.servicebus import ServiceBusMessage
+        from azure.servicebus import ServiceBusMessage  # pylint: disable=import-error,import-outside-toplevel
 
         queue_name = f"{STRESS_PREFIX}props-all"
         resources.create_queue(queue_name)
@@ -781,7 +789,7 @@ class TestMessagePropertyEdgeCases:
     @pytest.mark.timeout(60)
     def test_empty_application_properties(self, resources, connection_string):
         """Messages with empty application_properties dict."""
-        from azure.servicebus import ServiceBusMessage
+        from azure.servicebus import ServiceBusMessage  # pylint: disable=import-error,import-outside-toplevel
 
         queue_name = f"{STRESS_PREFIX}props-empty"
         resources.create_queue(queue_name)
@@ -841,7 +849,7 @@ class TestMessagePropertyEdgeCases:
     @pytest.mark.timeout(60)
     def test_bytes_application_properties(self, resources, connection_string):
         """Messages with bytes keys/values in application_properties."""
-        from azure.servicebus import ServiceBusMessage
+        from azure.servicebus import ServiceBusMessage  # pylint: disable=import-error,import-outside-toplevel
 
         queue_name = f"{STRESS_PREFIX}props-bytes"
         resources.create_queue(queue_name)
@@ -880,7 +888,7 @@ class TestMessagePropertyEdgeCases:
     @pytest.mark.timeout(60)
     def test_long_subject(self, resources, connection_string):
         """Messages with very long subject (1000+ chars)."""
-        from azure.servicebus import ServiceBusMessage
+        from azure.servicebus import ServiceBusMessage  # pylint: disable=import-error,import-outside-toplevel
 
         queue_name = f"{STRESS_PREFIX}props-long-subject"
         resources.create_queue(queue_name)
@@ -913,7 +921,7 @@ class TestMessagePropertyEdgeCases:
     @pytest.mark.timeout(60)
     def test_null_optional_fields(self, resources, connection_string):
         """Messages with minimal properties (most fields null/None)."""
-        from azure.servicebus import ServiceBusMessage
+        from azure.servicebus import ServiceBusMessage  # pylint: disable=import-error,import-outside-toplevel
 
         queue_name = f"{STRESS_PREFIX}props-minimal"
         resources.create_queue(queue_name)
@@ -962,7 +970,7 @@ class TestPremiumLargeMessages:
     transport in the Python SDK.
     """
 
-    def _setup_and_read(
+    def _setup_and_read(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self, resources, connection_string, queue_name, count, body_gen,
         content_type="application/json", max_msg_size_kb=102400,
     ):
@@ -1194,7 +1202,7 @@ class TestPremiumHighThroughput:
             logger.info("  Speedup (1000 vs 100): %.2fx", speedup)
 
     @pytest.mark.timeout(900)
-    def test_incremental_read_20k(self, resources, connection_string):
+    def test_incremental_read_20k(self, resources, connection_string):  # pylint: disable=too-many-locals
         """Send 20K messages, read incrementally in 5 waves of 4K."""
         queue_name = f"{STRESS_PREFIX}premium-incr-20k"
         resources.create_queue(queue_name)
@@ -1303,7 +1311,7 @@ class TestPremiumSessions:
         logger.info("Premium session basic: 20 messages with session_id verified")
 
     @pytest.mark.timeout(180)
-    def test_multi_session_queue(self, resources, connection_string):
+    def test_multi_session_queue(self, resources, connection_string):  # pylint: disable=too-many-locals
         """Send messages across 3 session IDs, peek all, verify session_id field."""
         queue_name = f"{STRESS_PREFIX}premium-multi-session"
         resources.create_session_queue(queue_name)

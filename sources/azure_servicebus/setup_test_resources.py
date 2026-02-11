@@ -61,7 +61,10 @@ def create_resources(admin_client: ServiceBusAdministrationClient) -> dict:
         admin_client.create_subscription(
             resources["topic_name"], resources["subscription_name"]
         )
-        print(f"  Created subscription: {resources['subscription_name']} on topic {resources['topic_name']}")
+        print(
+            f"  Created subscription: {resources['subscription_name']} "
+            f"on topic {resources['topic_name']}"
+        )
     except Exception as e:
         if "409" in str(e) or "Conflict" in str(e) or "already exists" in str(e).lower():
             print(
@@ -152,7 +155,7 @@ def cleanup_resources(admin_client: ServiceBusAdministrationClient) -> None:
                 print(f"  Failed to delete {resource_type} {name}: {e}")
 
 
-def main():
+def main():  # pylint: disable=missing-function-docstring
     parser = argparse.ArgumentParser(
         description="Set up Azure Service Bus test resources"
     )
@@ -188,7 +191,7 @@ def main():
             args.connection_string
         )
     else:
-        from azure.identity import DefaultAzureCredential
+        from azure.identity import DefaultAzureCredential  # pylint: disable=import-outside-toplevel
 
         credential = DefaultAzureCredential()
         admin_client = ServiceBusAdministrationClient(

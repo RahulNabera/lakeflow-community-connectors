@@ -210,7 +210,7 @@ class StressTestResources:
 # Bulk Message Sending
 # ---------------------------------------------------------------------------
 
-def send_messages_bulk(
+def send_messages_bulk(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     client: ServiceBusClient,
     queue_or_topic: str,
     count: int,
@@ -253,7 +253,7 @@ def send_messages_bulk(
     # Safe cumulative batch payload for AMQP-over-TCP.  The default TCP
     # transport on this namespace starts timing out on writes above
     # ~100-150 KB, so we flush the batch conservatively.
-    MAX_BATCH_BYTES_TCP = 50 * 1024  # 50 KB
+    max_batch_bytes_tcp = 50 * 1024  # 50 KB
 
     def _get_sender(svc_client):
         if is_topic:
@@ -308,7 +308,7 @@ def send_messages_bulk(
                     _flush_batch()  # flush pending TCP batch first
                     if ws_sender is None:
                         ws_sender_ctx = _get_sender(ws_client)
-                        ws_sender = ws_sender_ctx.__enter__()
+                        ws_sender = ws_sender_ctx.__enter__()  # pylint: disable=unnecessary-dunder-call
                     ws_sender.send_messages(msg)
                     sent += 1
                 elif msg_size > large_msg_threshold:
@@ -320,7 +320,7 @@ def send_messages_bulk(
                     batch_bytes += msg_size
                     if (
                         len(batch) >= BATCH_SEND_LIMIT
-                        or batch_bytes >= MAX_BATCH_BYTES_TCP
+                        or batch_bytes >= max_batch_bytes_tcp
                     ):
                         _flush_batch()
 
@@ -406,15 +406,27 @@ def gen_unicode_edge_cases():
         # Emoji sequences
         "Hello \U0001F600\U0001F4A9\U0001F3F3\uFE0F\u200D\U0001F308 World",
         # CJK characters
-        "\u4F60\u597D\u4E16\u754C Hello \u3053\u3093\u306B\u3061\u306F \uC548\uB155\uD558\uC138\uC694",
+        (
+            "\u4F60\u597D\u4E16\u754C Hello "
+            "\u3053\u3093\u306B\u3061\u306F \uC548\uB155\uD558\uC138\uC694"
+        ),
         # RTL text (Arabic + Hebrew)
-        "\u0645\u0631\u062D\u0628\u0627 \u0628\u0627\u0644\u0639\u0627\u0644\u0645 \u05E9\u05DC\u05D5\u05DD \u05E2\u05D5\u05DC\u05DD",
+        (
+            "\u0645\u0631\u062D\u0628\u0627 \u0628\u0627\u0644\u0639\u0627\u0644\u0645 "
+            "\u05E9\u05DC\u05D5\u05DD \u05E2\u05D5\u05DC\u05DD"
+        ),
         # Multi-byte UTF-8 (4-byte characters)
-        "\U0001F1FA\U0001F1F8 \U0001F1EE\U0001F1F3 \U0001F1EC\U0001F1E7 \U00010000\U00010001\U00010002",
+        (
+            "\U0001F1FA\U0001F1F8 \U0001F1EE\U0001F1F3 "
+            "\U0001F1EC\U0001F1E7 \U00010000\U00010001\U00010002"
+        ),
         # Null bytes embedded in text (should handle gracefully)
         "before\x00after\x00end",
         # Mixed scripts
-        "English \u0420\u0443\u0441\u0441\u043A\u0438\u0439 \u0E44\u0E17\u0E22 \u0939\u093F\u0928\u094D\u0926\u0940",
+        (
+            "English \u0420\u0443\u0441\u0441\u043A\u0438\u0439 "
+            "\u0E44\u0E17\u0E22 \u0939\u093F\u0928\u094D\u0926\u0940"
+        ),
         # Very long single line
         "A" * 10000,
         # Special JSON characters
@@ -492,7 +504,7 @@ def gen_mixed_sizes():
 # Session Message Helpers
 # ---------------------------------------------------------------------------
 
-def send_session_messages(
+def send_session_messages(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     client: ServiceBusClient,
     queue_name: str,
     count: int,

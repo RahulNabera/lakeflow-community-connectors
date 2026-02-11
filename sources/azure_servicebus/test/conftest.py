@@ -38,6 +38,7 @@ def pytest_configure(config):
 
 
 def pytest_addoption(parser):
+    """Register custom command-line options."""
     parser.addoption(
         "--no-cleanup",
         action="store_true",
