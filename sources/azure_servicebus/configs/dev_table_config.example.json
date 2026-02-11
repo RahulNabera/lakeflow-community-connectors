@@ -1,0 +1,22 @@
+{
+    "_comment": "Azure Service Bus Connector - Per-Table Options for Testing",
+    "_instructions": "Copy this file to dev_table_config.json. These options are passed to read_table() for each table.",
+
+    "queues": {},
+    "topics": {},
+    "subscriptions": {},
+    "queue_messages": {
+        "queue_name": "lakeflow-test-queue",
+        "max_message_count": "10"
+    },
+    "subscription_messages": {
+        "topic_name": "lakeflow-test-topic",
+        "subscription_name": "lakeflow-test-subscription",
+        "max_message_count": "10"
+    },
+    "dead_letter_messages": {
+        "source_type": "queue",
+        "queue_name": "lakeflow-test-queue",
+        "max_message_count": "10"
+    }
+}

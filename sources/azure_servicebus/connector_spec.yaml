@@ -1,0 +1,110 @@
+# azure_servicebus Community Connector Spec
+# This file defines the specification for the connector including
+# connection parameters and allowlist options.
+
+# ============================================================================
+# Connection Parameters
+# These are provided when creating the Unity Catalog connection.
+# ============================================================================
+connection:
+  # ---------------------------------------------------------------------------
+  # Multiple Authentication Methods
+  # ---------------------------------------------------------------------------
+  auth_methods:
+    - name: connection_string
+      description: >
+        Authenticate using a Service Bus connection string with SAS (Shared
+        Access Signature) token. This is the simplest method and works well
+        for development and testing.
+      parameters:
+        - name: connection_string
+          type: string
+          required: true
+          description: >
+            Full Azure Service Bus connection string including
+            SharedAccessKeyName and SharedAccessKey. Example:
+            Endpoint=sb://<namespace>.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=<key>
+
+    - name: azure_ad
+      description: >
+        Authenticate using Azure Active Directory DefaultAzureCredential.
+        Supports Azure CLI login, environment variables, managed identity,
+        and other credential providers. Recommended for production.
+      parameters:
+        - name: fully_qualified_namespace
+          type: string
+          required: true
+          description: >
+            Fully qualified Service Bus namespace URL. Example:
+            your-namespace.servicebus.windows.net
+
+    - name: service_principal
+      description: >
+        Authenticate using a service principal (Azure AD application)
+        with client credentials. The service principal must have the
+        'Azure Service Bus Data Receiver' or 'Azure Service Bus Data Owner'
+        RBAC role assigned on the Service Bus namespace.
+      parameters:
+        - name: fully_qualified_namespace
+          type: string
+          required: true
+          description: >
+            Fully qualified Service Bus namespace URL. Example:
+            your-namespace.servicebus.windows.net
+
+        - name: azure_tenant_id
+          type: string
+          required: true
+          description: >
+            Azure Active Directory tenant ID.
+
+        - name: azure_client_id
+          type: string
+          required: true
+          description: >
+            Service principal application (client) ID.
+
+        - name: azure_client_secret
+          type: string
+          required: true
+          description: >
+            Service principal client secret.
+
+    - name: managed_identity
+      description: >
+        Authenticate using Azure Managed Identity. Must be running in an
+        Azure environment with managed identity enabled. The identity must
+        have the 'Azure Service Bus Data Receiver' or 'Azure Service Bus
+        Data Owner' RBAC role assigned.
+      parameters:
+        - name: fully_qualified_namespace
+          type: string
+          required: true
+          description: >
+            Fully qualified Service Bus namespace URL. Example:
+            your-namespace.servicebus.windows.net
+
+        - name: azure_client_id
+          type: string
+          required: false
+          description: >
+            Client ID for user-assigned managed identity.
+            Omit for system-assigned managed identity.
+
+  # Common parameter applied regardless of auth method
+  common_parameters:
+    - name: credential_type
+      type: string
+      required: false
+      description: >
+        Authentication method to use. One of: connection_string, azure_ad,
+        service_principal, managed_identity. If not specified, auto-detected
+        based on which parameters are provided.
+
+# ============================================================================
+# External Options Allowlist
+# These table-specific options must be included in the externalOptionsAllowList
+# parameter of the UC connection to allow them to be passed through.
+# Use a comma-separated string of option names.
+# ============================================================================
+external_options_allowlist: "queue_name,topic_name,subscription_name,source_type,max_message_count"

@@ -15,9 +15,9 @@ src/databricks/labs/community_connector/
     {source}/            # Each connector has: {source}.py, README.md
   libs/                  # Shared utilities (spec_parser.py, utils.py, source_loader.py)
   pipeline/              # SDP orchestration (ingestion_pipeline.py)
-  sparkpds/              # PySpark Data Source generic implementation and registry API. 
+  sparkpds/              # PySpark Data Source generic implementation and registry API.
 tools/
-  community_connector/   # CLI tool to set up and run community connectors in Databricks workspace.
+  community_connector/   # CLI tool to set up and run community connectors in Databricks workspace
   scripts/               # Build tools (merge_python_source.py)
 tests/
   unit/
@@ -69,21 +69,67 @@ pytest tests/unit/ -v
 
 # Generate deployable file (temporary workaround)
 python tools/scripts/merge_python_source.py {source_name}
+
+# Regenerate all connector merged sources
+python tools/scripts/merge_python_source.py all
+
+# Run pylint with CI-equivalent flags (non-test files)
+pylint --max-line-length=100 \
+  --disable=W,C0114,C0115,R0801,R1705 \
+  --ignore-long-lines='^\s*(#|f?".*"|f?'"'"'.*'"'"')$' \
+  sources/{source_name}/__init__.py \
+  sources/{source_name}/{source_name}.py
+
+# Run pylint for test files (adds C0116 disable)
+pylint --max-line-length=100 \
+  --disable=W,C0114,C0115,R0801,R1705,C0116 \
+  --ignore-long-lines='^\s*(#|f?".*"|f?'"'"'.*'"'"')$' \
+  sources/{source_name}/test/test_*.py
 ```
 
 ## Development Workflow
 
 1. **Understand the source** — Gather API specs, auth mechanisms, and schemas using the provided template
 2. **Implement the connector** — Implement the `LakeflowConnect` interface methods
-3. **Test & iterate** — Run the standard test suites against a real source system
-   - *(Optional)* Implement write-back testing for end-to-end validation (write → read → verify cycle)
-4. **Generate documentation** — Create user-facing docs using the documentation template
-   - *(Temporary)* Run `tools/scripts/merge_python_source.py` to generate the deployable file
+3. **Create `__init__.py`** — Each connector needs a package init that exports `LakeflowConnect`
+4. **Test & iterate** — Run the standard test suites against a real source system
+   - *(Optional)* Implement write-back testing for end-to-end validation (write -> read -> verify cycle)
+5. **Run pylint** — Ensure all files pass with CI-equivalent flags before pushing
+6. **Generate merged source** — Run `tools/scripts/merge_python_source.py {source_name}`
+7. **Generate documentation** — Create user-facing docs using the documentation template
 
 ## Implementation Guidelines
 
 - When developing a new connector, only modify `src/databricks/labs/community_connector/sources/{source_name}/{source_name}.py` — do **not** change the library, pipeline, or interface code.
 - Shared code (libs, pipeline, interface) should only be updated when explicitly instructed to add new features or improvements to the framework itself.
+
+## Pylint / CI Conventions
+
+The CI runs pylint on all tracked `*.py` files (excluding `_generated_*` files). Common patterns for suppressing false positives:
+
+- **Third-party imports not in root `pyproject.toml`**: Add `# pylint: disable=import-error` on the `from` line. This is needed when a connector depends on packages declared only in its per-source `pyproject.toml` (e.g., `azure-servicebus`, `azure-identity`).
+- **Too many instance attributes**: Add `# pylint: disable=too-many-instance-attributes` on the `class` line.
+- **Too many arguments / positional arguments**: Add `# pylint: disable=too-many-arguments,too-many-positional-arguments` on the `def` line.
+- **Too many locals / branches / statements**: Add `# pylint: disable=too-many-locals` (or `too-many-branches`, `too-many-statements`) on the `def` line.
+- **Too many lines in module**: Add `# pylint: disable=too-many-lines` as the first line of the file.
+- **Line length**: Max 100 chars. Break long lines using parentheses. The `--ignore-long-lines` flag exempts lines that are entirely comments or string literals.
+
+See `src/databricks/labs/community_connector/sources/github/github.py` and `src/databricks/labs/community_connector/sources/azure_servicebus/azure_servicebus.py` for examples of these patterns.
+
+## Azure Service Bus Connector
+
+The `src/databricks/labs/community_connector/sources/azure_servicebus/` connector supports:
+- **Tables**: `queues`, `topics`, `subscriptions`, `queue_messages`, `subscription_messages`, `dead_letter_messages`
+- **Auth methods**: Connection string, Azure AD (DefaultAzureCredential), Service Principal, Managed Identity
+- **Ingestion types**: `snapshot` for metadata tables, `append` for message tables
+- **Session-enabled queues**: Automatically detects and iterates through available sessions
+- **Key files**:
+  - `azure_servicebus.py` — Main connector implementation
+  - `__init__.py` — Package init exporting `LakeflowConnect`
+  - `connector_spec.yaml` — Connection parameter specification
+  - `test/test_azure_servicebus_lakeflow_connect.py` — Integration tests
+  - `test/stress_test.py` — Stress/load tests
+  - `setup_test_resources.py` — Script to create test queues/topics in Azure
 
 ## Testing Conventions
 
@@ -97,6 +143,7 @@ python tools/scripts/merge_python_source.py {source_name}
 - `src/databricks/labs/community_connector/interface/lakeflow_connect.py` - Base interface definition
 - `src/databricks/labs/community_connector/sources/zendesk/zendesk.py` - Reference implementation
 - `src/databricks/labs/community_connector/sources/example/example.py` - Reference implementation
+- `src/databricks/labs/community_connector/sources/azure_servicebus/azure_servicebus.py` - Azure Service Bus connector
 - `tests/unit/sources/test_suite.py` - Test harness
 - `tests/unit/sources/example/test_example_lakeflow_connect.py` - Reference test implementation
 - `prompts/README.md` - Development workflow guide (references `.claude/skills/`)
