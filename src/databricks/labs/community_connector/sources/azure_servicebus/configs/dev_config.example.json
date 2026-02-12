@@ -1,0 +1,24 @@
+{
+    "_comment": "Azure Service Bus Connector - Development Configuration",
+    "_instructions": "Copy this file to dev_config.json and fill in your credentials.",
+
+    "_option_1_connection_string": "Simplest method - use the connection string from Azure Portal",
+    "connection_string": "Endpoint=sb://YOUR-NAMESPACE.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=YOUR-KEY",
+
+    "_option_2_azure_ad": "Use Azure AD with DefaultAzureCredential (run 'az login' first)",
+    "fully_qualified_namespace": "YOUR-NAMESPACE.servicebus.windows.net",
+    "credential_type": "connection_string",
+
+    "_option_3_service_principal": "Use service principal with client credentials",
+    "azure_tenant_id": "YOUR-TENANT-ID",
+    "azure_client_id": "YOUR-CLIENT-ID",
+    "azure_client_secret": "YOUR-CLIENT-SECRET",
+
+    "_option_4_managed_identity": "Use managed identity (Azure environment only)",
+    "_managed_identity_client_id": "YOUR-USER-ASSIGNED-MI-CLIENT-ID (optional, omit for system-assigned)",
+
+    "_test_resources": "Names of test resources created by setup_test_resources.py",
+    "test_queue_name": "lakeflow-test-queue",
+    "test_topic_name": "lakeflow-test-topic",
+    "test_subscription_name": "lakeflow-test-subscription"
+}

@@ -101,10 +101,42 @@ connection:
         service_principal, managed_identity. If not specified, auto-detected
         based on which parameters are provided.
 
+    - name: operation_timeout
+      type: string
+      required: false
+      description: >
+        AMQP socket timeout in seconds for the message client (default: 60).
+        Applies to message read operations, not admin/management calls.
+
+    - name: max_wait_time
+      type: string
+      required: false
+      description: >
+        Maximum wait time in seconds for message receivers (default: 5).
+
+    - name: max_retries
+      type: string
+      required: false
+      description: >
+        Maximum retry attempts for transient failures (default: 3).
+
+    - name: max_body_size
+      type: string
+      required: false
+      description: >
+        Maximum message body size in bytes. Bodies larger than this are
+        truncated. Set to 0 for unlimited (default: 0).
+
+    - name: debug_mode
+      type: string
+      required: false
+      description: >
+        Set to 'true' to enable verbose per-message logging (default: false).
+
 # ============================================================================
 # External Options Allowlist
 # These table-specific options must be included in the externalOptionsAllowList
 # parameter of the UC connection to allow them to be passed through.
 # Use a comma-separated string of option names.
 # ============================================================================
-external_options_allowlist: "queue_name,topic_name,subscription_name,source_type,max_message_count"
+external_options_allowlist: "queue_name,topic_name,subscription_name,source_type,max_message_count,session_id"

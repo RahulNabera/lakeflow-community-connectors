@@ -38,12 +38,13 @@ This connector enables you to read metadata and messages from Azure Service Bus 
 Get your connection string from the Azure Portal:
 
 1. Navigate to your Service Bus namespace
-2. Go to **Shared access policies** > **RootManageSharedAccessKey**
+2. Go to **Shared access policies** > create a policy with **Listen** claim only
+   (or use `RootManageSharedAccessKey` for quick local testing only)
 3. Copy the **Primary Connection String**
 
 ```python
 options = {
-    "connection_string": "Endpoint=sb://your-namespace.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=YOUR_KEY"
+    "connection_string": "Endpoint=sb://your-namespace.servicebus.windows.net/;SharedAccessKeyName=ReadOnlyPolicy;SharedAccessKey=YOUR_KEY"
 }
 ```
 
@@ -87,6 +88,18 @@ options = {
 }
 ```
 
+## Connection Options
+
+These optional parameters can be set at the connection level:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `operation_timeout` | `60` | AMQP socket timeout in seconds for message operations (does not affect admin calls) |
+| `max_wait_time` | `5` | Maximum wait time in seconds for message receivers |
+| `max_retries` | `3` | Maximum retry attempts for transient failures |
+| `max_body_size` | `0` | Maximum message body size in bytes (0 = unlimited) |
+| `debug_mode` | `false` | Set to `true` for verbose per-message logging |
+
 ## Table Options
 
 ### queue_messages
@@ -95,6 +108,7 @@ options = {
 |--------|----------|-------------|
 | `queue_name` | Yes | Name of the queue to read messages from |
 | `max_message_count` | No | Maximum messages per batch (default: 100) |
+| `session_id` | No | Specific session ID to read from (for session-enabled queues) |
 
 ### subscription_messages
 
@@ -163,22 +177,29 @@ records2, offset2 = connector.read_table("queue_messages", offset, {
 
 ```python
 from pipeline.ingestion_pipeline import ingest
+from libs.source_loader import get_register_function
 
-ingest(
-    source_name="azure_servicebus",
-    connection_options={
-        "connection_string": "{{secrets/scope/servicebus-connection-string}}"
-    },
-    tables=[
-        {"name": "queues"},
-        {"name": "topics"},
-        {"name": "subscriptions"},
+register_lakeflow_source = get_register_function("azure_servicebus")
+register_lakeflow_source(spark)
+
+pipeline_spec = {
+    "connection_name": "<YOUR_CONNECTION_NAME>",
+    "objects": [
+        {"table": {"source_table": "queues"}},
+        {"table": {"source_table": "topics"}},
+        {"table": {"source_table": "subscriptions"}},
         {
-            "name": "queue_messages",
-            "options": {"queue_name": "my-queue"}
+            "table": {
+                "source_table": "queue_messages",
+                "table_configuration": {
+                    "queue_name": "my-queue",
+                },
+            }
         },
-    ]
-)
+    ],
+}
+
+ingest(spark, pipeline_spec)
 ```
 
 ## Schema Reference

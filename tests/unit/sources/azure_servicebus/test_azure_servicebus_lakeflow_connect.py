@@ -5,12 +5,12 @@ This file integrates with the generic LakeflowConnect test suite AND provides
 comprehensive connector-specific tests.
 
 Run generic tests (from repo root):
-    pytest sources/azure_servicebus/test/
+    pytest tests/unit/sources/azure_servicebus/
       test_azure_servicebus_lakeflow_connect.py
       ::test_azure_servicebus_connector -v
 
 Run all tests:
-    pytest sources/azure_servicebus/test/
+    pytest tests/unit/sources/azure_servicebus/
       test_azure_servicebus_lakeflow_connect.py -v
 
 Prerequisites:
@@ -27,10 +27,10 @@ from pathlib import Path
 import pytest
 from pyspark.sql.types import StructType
 
-from tests import test_suite
-from tests.test_suite import LakeflowConnectTester
-from tests.test_utils import load_config
-from sources.azure_servicebus.azure_servicebus import LakeflowConnect
+from tests.unit.sources import test_suite
+from tests.unit.sources.test_suite import LakeflowConnectTester
+from tests.unit.sources.test_utils import load_config
+from databricks.labs.community_connector.sources.azure_servicebus.azure_servicebus import AzureServicebusLakeflowConnect as LakeflowConnect
 
 
 # =========================================================================
@@ -45,7 +45,7 @@ def test_azure_servicebus_connector():
     test_suite.LakeflowConnect = LakeflowConnect
 
     # Load connection-level configuration (e.g. connection_string)
-    parent_dir = Path(__file__).parent.parent
+    parent_dir = Path(__file__).parent
     config_path = parent_dir / "configs" / "dev_config.json"
     table_config_path = parent_dir / "configs" / "dev_table_config.json"
 

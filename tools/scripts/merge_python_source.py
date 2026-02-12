@@ -416,6 +416,17 @@ def deduplicate_imports(import_lists: List[List[str]]) -> List[str]:
 
     for import_list in import_lists:
         for imp in import_list:
+            # Strip inline comments (e.g., # pylint: disable=import-error)
+            # from each line before parsing import names
+            cleaned_lines = []
+            for line in imp.split('\n'):
+                comment_idx = line.find('#')
+                if comment_idx >= 0:
+                    cleaned_lines.append(line[:comment_idx].rstrip())
+                else:
+                    cleaned_lines.append(line)
+            imp = '\n'.join(cleaned_lines)
+
             imp_stripped = imp.strip()
             if not imp_stripped:
                 continue

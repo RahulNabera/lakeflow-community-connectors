@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lakeflow-community-connectors-azure-servicebus"
+version = "0.1.0"
+description = "Azure Service Bus connector for Lakeflow Community Connectors"
+requires-python = ">=3.10"
+dependencies = [
+    "pyspark>=3.5.0",
+    "azure-servicebus>=7.11.0",
+    "azure-identity>=1.15.0",
+    "lakeflow-community-connectors>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[tool.setuptools]
+packages = ["databricks.labs.community_connector.sources.azure_servicebus"]
+
+[tool.setuptools.package-dir]
+"databricks.labs.community_connector.sources.azure_servicebus" = "."
+
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.md", "*.yaml"]

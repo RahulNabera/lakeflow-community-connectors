@@ -57,6 +57,10 @@ from azure.core.exceptions import (  # pylint: disable=import-error
     ServiceResponseError,
 )
 
+from databricks.labs.community_connector.interface.lakeflow_connect import (  # pylint: disable=import-error
+    LakeflowConnect,
+)
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -124,7 +128,7 @@ def _retry_with_backoff(
     raise last_exc  # type: ignore[misc]
 
 
-class LakeflowConnect:  # pylint: disable=too-many-instance-attributes
+class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-many-instance-attributes
     """
     Azure Service Bus connector implementing the Lakeflow Community Connector interface.
     """
@@ -241,7 +245,8 @@ class LakeflowConnect:  # pylint: disable=too-many-instance-attributes
                 )
             )
             self._client = ServiceBusClient.from_connection_string(
-                self.connection_string
+                self.connection_string,
+                socket_timeout=self.operation_timeout,
             )
         except Exception as e:
             raise ValueError(
@@ -373,7 +378,8 @@ class LakeflowConnect:  # pylint: disable=too-many-instance-attributes
                 self.fully_qualified_namespace, credential
             )
             self._client = ServiceBusClient(
-                self.fully_qualified_namespace, credential
+                self.fully_qualified_namespace, credential,
+                socket_timeout=self.operation_timeout,
             )
 
             # Validate the connection by making a simple API call
@@ -397,7 +403,7 @@ class LakeflowConnect:  # pylint: disable=too-many-instance-attributes
     def _validate_connection(self) -> None:
         """Validate the connection by making a test API call."""
         try:
-            iter(self._admin_client.list_queues())
+            next(iter(self._admin_client.list_queues()), None)
             logger.info(
                 f"Successfully connected to Service Bus namespace: "
                 f"{self.fully_qualified_namespace}"
@@ -421,6 +427,10 @@ class LakeflowConnect:  # pylint: disable=too-many-instance-attributes
                     f"Error: {e}"
                 ) from e
             logger.warning(f"Could not validate connection: {e}")
+            raise RuntimeError(
+                f"Failed to validate connection to Service Bus namespace "
+                f"'{self.fully_qualified_namespace}': {e}"
+            ) from e
 
     # =========================================================================
     # Health Check
