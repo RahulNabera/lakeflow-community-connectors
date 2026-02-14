@@ -39,7 +39,6 @@ Get your connection string from the Azure Portal:
 
 1. Navigate to your Service Bus namespace
 2. Go to **Shared access policies** > create a policy with **Listen** claim only
-   (or use `RootManageSharedAccessKey` for quick local testing only)
 3. Copy the **Primary Connection String**
 
 ```python
@@ -143,10 +142,12 @@ Message tables (`queue_messages`, `subscription_messages`, `dead_letter_messages
 ### Local Testing
 
 ```python
-from sources.azure_servicebus.azure_servicebus import LakeflowConnect
+from databricks.labs.community_connector.sources.azure_servicebus.azure_servicebus import (
+    AzureServicebusLakeflowConnect,
+)
 
 # Initialize
-connector = LakeflowConnect({
+connector = AzureServicebusLakeflowConnect({
     "connection_string": "Endpoint=sb://..."
 })
 
@@ -243,32 +244,32 @@ ingest(spark, pipeline_spec)
 
 1. Set up test resources:
    ```bash
-   python sources/azure_servicebus/setup_test_resources.py \
+   python src/databricks/labs/community_connector/sources/azure_servicebus/setup_test_resources.py \
        --connection-string "Endpoint=sb://..."
    ```
 
 2. Copy and fill in config files:
    ```bash
-   cp sources/azure_servicebus/configs/dev_config.example.json \
-      sources/azure_servicebus/configs/dev_config.json
-   cp sources/azure_servicebus/configs/dev_table_config.example.json \
-      sources/azure_servicebus/configs/dev_table_config.json
+   cp tests/unit/sources/azure_servicebus/configs/dev_config.example.json \
+      tests/unit/sources/azure_servicebus/configs/dev_config.json
+   cp tests/unit/sources/azure_servicebus/configs/dev_table_config.example.json \
+      tests/unit/sources/azure_servicebus/configs/dev_table_config.json
    # Edit the config files with your credentials
    ```
 
 3. Run the generic test suite:
    ```bash
-   pytest sources/azure_servicebus/test/test_azure_servicebus_lakeflow_connect.py::test_azure_servicebus_connector -v
+   PYTHONPATH=src pytest tests/unit/sources/azure_servicebus/test_azure_servicebus_lakeflow_connect.py::test_azure_servicebus_connector -v
    ```
 
 4. Run all tests (including auth-specific tests):
    ```bash
-   pytest sources/azure_servicebus/test/test_azure_servicebus_lakeflow_connect.py -v
+   PYTHONPATH=src pytest tests/unit/sources/azure_servicebus/test_azure_servicebus_lakeflow_connect.py -v
    ```
 
 5. Clean up test resources:
    ```bash
-   python sources/azure_servicebus/setup_test_resources.py \
+   python src/databricks/labs/community_connector/sources/azure_servicebus/setup_test_resources.py \
        --connection-string "Endpoint=sb://..." --cleanup
    ```
 

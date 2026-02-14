@@ -6,13 +6,13 @@ Markers:
 
 Usage:
     # Run all tests
-    pytest sources/azure_servicebus/test/stress_test.py -v
+    PYTHONPATH=src pytest tests/unit/sources/azure_servicebus/stress_test.py -v
 
     # Run only premium-tier tests
-    pytest sources/azure_servicebus/test/stress_test.py -v -m premium
+    PYTHONPATH=src pytest tests/unit/sources/azure_servicebus/stress_test.py -v -m premium
 
     # Exclude premium-tier tests
-    pytest sources/azure_servicebus/test/stress_test.py -v -m "not premium"
+    PYTHONPATH=src pytest tests/unit/sources/azure_servicebus/stress_test.py -v -m "not premium"
 """
 
 import os

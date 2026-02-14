@@ -270,10 +270,10 @@ The connector is tested against Azure Service Bus **Premium tier** with the foll
 
 ```bash
 # All premium tests
-pytest sources/azure_servicebus/test/stress_test.py -v -m premium --timeout=1800
+PYTHONPATH=src pytest tests/unit/sources/azure_servicebus/stress_test.py -v -m premium --timeout=1800
 
 # Exclude premium (Standard-tier only)
-pytest sources/azure_servicebus/test/stress_test.py -v -m "not premium"
+PYTHONPATH=src pytest tests/unit/sources/azure_servicebus/stress_test.py -v -m "not premium"
 ```
 
 ### Notes

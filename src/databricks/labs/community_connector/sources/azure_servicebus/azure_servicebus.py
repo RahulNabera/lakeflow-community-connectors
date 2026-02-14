@@ -21,6 +21,7 @@
 import json
 import base64
 import logging
+import re
 import time
 from datetime import datetime
 from typing import Iterator, Optional, Any, Callable, TypeVar
@@ -81,6 +82,32 @@ _TRANSIENT_EXCEPTIONS = (
 )
 
 
+_SENSITIVE_VALUE_PATTERNS = (
+    re.compile(r"(?i)(sharedaccesskey=)([^;\s]+)"),
+    re.compile(r"(?i)(accountkey=)([^;\s]+)"),
+    re.compile(r"(?i)(azure_client_secret=)([^;\s]+)"),
+    re.compile(r"(?i)(client_secret=)([^;\s]+)"),
+    re.compile(r"(?i)(password=)([^;\s]+)"),
+    re.compile(r"(?i)(sig=)([^&\s]+)"),
+)
+
+
+def _redact_sensitive_values(message: str) -> str:
+    """Redact common credential fragments from error messages."""
+    redacted = message
+    for pattern in _SENSITIVE_VALUE_PATTERNS:
+        redacted = pattern.sub(r"\1***", redacted)
+    return redacted
+
+
+def _safe_error_message(exc: Exception) -> str:
+    """Return an exception string with potential secrets redacted."""
+    message = str(exc).strip()
+    if not message:
+        return type(exc).__name__
+    return f"{type(exc).__name__}: {_redact_sensitive_values(message)}"
+
+
 def _is_transient(exc: Exception) -> bool:
     """Return True if the exception is transient and the operation can be retried."""
     if isinstance(exc, _TRANSIENT_EXCEPTIONS):
@@ -115,12 +142,11 @@ def _retry_with_backoff(
                 raise
             delay = min(base_delay * (2 ** attempt), max_delay)
             logger.warning(
-                "[Retry %d/%d] %s failed (%s: %s), retrying in %.1fs",
+                "[Retry %d/%d] %s failed (%s), retrying in %.1fs",
                 attempt + 1,
                 max_retries,
                 operation_name or "Operation",
-                type(exc).__name__,
-                exc,
+                _safe_error_message(exc),
                 delay,
             )
             time.sleep(delay)
@@ -149,6 +175,51 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
         "subscription_messages",
         "dead_letter_messages",
     ]
+
+    @staticmethod
+    def _parse_int_option(
+        value: Any,
+        *,
+        option_name: str,
+        default: int,
+        minimum: int,
+    ) -> int:
+        """Parse and validate integer connector options."""
+        if value in (None, ""):
+            return default
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{option_name} must be an integer greater than or equal to {minimum}"
+            ) from exc
+        if parsed < minimum:
+            raise ValueError(
+                f"{option_name} must be an integer greater than or equal to {minimum}"
+            )
+        return parsed
+
+    @staticmethod
+    def _parse_start_sequence(start_offset: Optional[dict]) -> int:
+        """Parse sequence_number from start_offset with validation."""
+        if start_offset is None:
+            return 0
+        if not isinstance(start_offset, dict):
+            raise ValueError("start_offset must be a dictionary")
+        raw_sequence = start_offset.get("sequence_number", 0)
+        if raw_sequence in (None, ""):
+            return 0
+        try:
+            sequence_number = int(raw_sequence)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "start_offset.sequence_number must be an integer greater than or equal to 0"
+            ) from exc
+        if sequence_number < 0:
+            raise ValueError(
+                "start_offset.sequence_number must be an integer greater than or equal to 0"
+            )
+        return sequence_number
 
     def __init__(self, options: dict[str, str]) -> None:
         """
@@ -181,10 +252,30 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
         self._closed = False
 
         # Configurable timeouts and retry
-        self.operation_timeout = int(options.get("operation_timeout", "60"))
-        self.max_wait_time = int(options.get("max_wait_time", "5"))
-        self.max_retries = int(options.get("max_retries", "3"))
-        self.max_body_size = int(options.get("max_body_size", "0"))
+        self.operation_timeout = self._parse_int_option(
+            options.get("operation_timeout"),
+            option_name="operation_timeout",
+            default=60,
+            minimum=1,
+        )
+        self.max_wait_time = self._parse_int_option(
+            options.get("max_wait_time"),
+            option_name="max_wait_time",
+            default=5,
+            minimum=0,
+        )
+        self.max_retries = self._parse_int_option(
+            options.get("max_retries"),
+            option_name="max_retries",
+            default=3,
+            minimum=0,
+        )
+        self.max_body_size = self._parse_int_option(
+            options.get("max_body_size"),
+            option_name="max_body_size",
+            default=0,
+            minimum=0,
+        )
         self.debug_mode = options.get("debug_mode", "false").lower() == "true"
 
         # Determine authentication method
@@ -252,7 +343,7 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
             raise ValueError(
                 f"Failed to initialize Service Bus client with connection string. "
                 f"Ensure the connection string is valid and includes the SharedAccessKey. "
-                f"Error: {e}"
+                f"Error: {_safe_error_message(e)}"
             ) from e
 
     def _init_service_principal_auth(self) -> None:
@@ -285,11 +376,12 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
                 f"  4. The service principal has required RBAC roles on the Service Bus namespace:\n"
                 f"     - 'Azure Service Bus Data Receiver' or 'Azure Service Bus Data Owner'\n"
                 f"     - 'Reader' role for management operations\n"
-                f"Error: {e}"
+                f"Error: {_safe_error_message(e)}"
             ) from e
         except Exception as e:
             raise ValueError(
-                f"Failed to initialize Service Bus client with service principal. Error: {e}"
+                f"Failed to initialize Service Bus client with service principal. "
+                f"Error: {_safe_error_message(e)}"
             ) from e
 
     def _init_managed_identity_auth(self) -> None:
@@ -325,13 +417,13 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
                     f"  3. User-assigned managed identity client_id"
                     f" is correct: {self.azure_client_id}\n"
                 )
-            error_msg += f"Error: {e}"
+            error_msg += f"Error: {_safe_error_message(e)}"
             raise ValueError(error_msg) from e
         except Exception as e:
             raise ValueError(
                 f"Failed to initialize Service Bus client with managed identity. "
                 f"Ensure you are running in an Azure environment with managed identity enabled. "
-                f"Error: {e}"
+                f"Error: {_safe_error_message(e)}"
             ) from e
 
     def _init_azure_ad_auth(self) -> None:
@@ -354,7 +446,7 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
                 f"After authenticating, ensure the identity has required RBAC roles:\n"
                 f"  - 'Azure Service Bus Data Receiver' or 'Azure Service Bus Data Owner'\n"
                 f"  - 'Reader' role for management operations\n"
-                f"Error: {e}"
+                f"Error: {_safe_error_message(e)}"
             ) from e
         except Exception as e:
             error_str = str(e).lower()
@@ -365,10 +457,11 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
                     f"  2. Environment variables: Set AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_SECRET\n"
                     f"  3. Managed Identity: Deploy to Azure with managed identity enabled\n"
                     f"  4. Service Principal: Use credential_type='service_principal' with explicit credentials\n"
-                    f"Error: {e}"
+                    f"Error: {_safe_error_message(e)}"
                 ) from e
             raise ValueError(
-                f"Failed to initialize Service Bus client with Azure AD. Error: {e}"
+                f"Failed to initialize Service Bus client with Azure AD. "
+                f"Error: {_safe_error_message(e)}"
             ) from e
 
     def _create_clients_with_credential(self, credential) -> None:
@@ -396,7 +489,7 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
                     f"  - 'Azure Service Bus Data Owner' for full access\n"
                     f"  - 'Reader' for listing queues/topics\n"
                     f"Namespace: {self.fully_qualified_namespace}\n"
-                    f"Error: {e}"
+                    f"Error: {_safe_error_message(e)}"
                 ) from e
             raise
 
@@ -424,12 +517,12 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
                     f"Required RBAC roles:\n"
                     f"  - 'Reader' or 'Contributor' for management operations\n"
                     f"  - 'Azure Service Bus Data Receiver' for reading messages\n"
-                    f"Error: {e}"
+                    f"Error: {_safe_error_message(e)}"
                 ) from e
-            logger.warning(f"Could not validate connection: {e}")
+            logger.warning("Could not validate connection: %s", _safe_error_message(e))
             raise RuntimeError(
                 f"Failed to validate connection to Service Bus namespace "
-                f"'{self.fully_qualified_namespace}': {e}"
+                f"'{self.fully_qualified_namespace}': {_safe_error_message(e)}"
             ) from e
 
     # =========================================================================
@@ -452,7 +545,10 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
                 "details": f"Connected. {len(queues)} queue(s) accessible.",
             }
         except Exception as e:
-            return {"healthy": False, "details": f"Connection error: {e}"}
+            return {
+                "healthy": False,
+                "details": f"Connection error: {_safe_error_message(e)}",
+            }
 
     def list_tables(self) -> list[str]:
         """
@@ -975,8 +1071,13 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
         if not queue_name:
             raise ValueError("queue_name is required for queue_messages table")
 
-        max_message_count = int(table_options.get("max_message_count", "100"))
-        start_sequence = start_offset.get("sequence_number", 0)
+        max_message_count = self._parse_int_option(
+            table_options.get("max_message_count"),
+            option_name="max_message_count",
+            default=100,
+            minimum=1,
+        )
+        start_sequence = self._parse_start_sequence(start_offset)
         session_id = table_options.get("session_id")  # optional
 
         last_sequence = start_sequence
@@ -1053,11 +1154,12 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
 
         except (ServiceBusAuthenticationError, ServiceBusAuthorizationError) as e:
             raise ValueError(
-                f"Authentication/authorization failed reading queue '{queue_name}': {e}"
+                f"Authentication/authorization failed reading queue '{queue_name}': "
+                f"{_safe_error_message(e)}"
             ) from e
         except ServiceBusError as e:
             raise RuntimeError(
-                f"Service Bus error reading queue '{queue_name}': {e}"
+                f"Service Bus error reading queue '{queue_name}': {_safe_error_message(e)}"
             ) from e
 
         elapsed = time.perf_counter() - t_start
@@ -1087,8 +1189,13 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
                 "topic_name and subscription_name are required for subscription_messages table"
             )
 
-        max_message_count = int(table_options.get("max_message_count", "100"))
-        start_sequence = start_offset.get("sequence_number", 0)
+        max_message_count = self._parse_int_option(
+            table_options.get("max_message_count"),
+            option_name="max_message_count",
+            default=100,
+            minimum=1,
+        )
+        start_sequence = self._parse_start_sequence(start_offset)
 
         last_sequence = start_sequence
         records = []
@@ -1133,12 +1240,13 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
         except (ServiceBusAuthenticationError, ServiceBusAuthorizationError) as e:
             raise ValueError(
                 f"Authentication/authorization failed reading "
-                f"subscription '{topic_name}/{subscription_name}': {e}"
+                f"subscription '{topic_name}/{subscription_name}': "
+                f"{_safe_error_message(e)}"
             ) from e
         except ServiceBusError as e:
             raise RuntimeError(
                 f"Service Bus error reading subscription "
-                f"'{topic_name}/{subscription_name}': {e}"
+                f"'{topic_name}/{subscription_name}': {_safe_error_message(e)}"
             ) from e
 
         elapsed = time.perf_counter() - t_start
@@ -1162,8 +1270,13 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
         if source_type not in ("queue", "subscription"):
             raise ValueError("source_type must be 'queue' or 'subscription'")
 
-        max_message_count = int(table_options.get("max_message_count", "100"))
-        start_sequence = start_offset.get("sequence_number", 0)
+        max_message_count = self._parse_int_option(
+            table_options.get("max_message_count"),
+            option_name="max_message_count",
+            default=100,
+            minimum=1,
+        )
+        start_sequence = self._parse_start_sequence(start_offset)
 
         last_sequence = start_sequence
         records = []
@@ -1236,12 +1349,12 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
         except (ServiceBusAuthenticationError, ServiceBusAuthorizationError) as e:
             raise ValueError(
                 f"Authentication/authorization failed reading dead letters from "
-                f"'{source_name}': {e}"
+                f"'{source_name}': {_safe_error_message(e)}"
             ) from e
         except ServiceBusError as e:
             raise RuntimeError(
                 f"Service Bus error reading dead letters from "
-                f"'{source_name}': {e}"
+                f"'{source_name}': {_safe_error_message(e)}"
             ) from e
 
         elapsed = time.perf_counter() - t_start
@@ -1295,7 +1408,9 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
                     body = base64.b64encode(body_bytes).decode("ascii")
         except Exception as e:
             logger.warning(
-                "Failed to read message body for msg_id=%s: %s", msg.message_id, e
+                "Failed to read message body for msg_id=%s: %s",
+                msg.message_id,
+                _safe_error_message(e),
             )
             body = None
 
@@ -1323,7 +1438,7 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
                 logger.warning(
                     "Failed to serialize application properties for msg_id=%s: %s",
                     msg.message_id,
-                    e,
+                    _safe_error_message(e),
                 )
                 app_props = None
 
@@ -1362,21 +1477,23 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
             try:
                 self._client.close()
             except Exception as e:
-                errors.append(f"ServiceBusClient.close(): {e}")
+                errors.append(f"ServiceBusClient.close(): {_safe_error_message(e)}")
             finally:
                 self._client = None
         if self._admin_client:
             try:
                 self._admin_client.close()
             except Exception as e:
-                errors.append(f"ServiceBusAdministrationClient.close(): {e}")
+                errors.append(
+                    f"ServiceBusAdministrationClient.close(): {_safe_error_message(e)}"
+                )
             finally:
                 self._admin_client = None
         if self._credential and hasattr(self._credential, "close"):
             try:
                 self._credential.close()
             except Exception as e:
-                errors.append(f"Credential.close(): {e}")
+                errors.append(f"Credential.close(): {_safe_error_message(e)}")
             finally:
                 self._credential = None
         if errors:

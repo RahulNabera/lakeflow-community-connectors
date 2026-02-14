@@ -3,7 +3,7 @@
     "_instructions": "Copy this file to dev_config.json and fill in your credentials.",
 
     "_option_1_connection_string": "Simplest method - use the connection string from Azure Portal",
-    "connection_string": "Endpoint=sb://YOUR-NAMESPACE.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=YOUR-KEY",
+    "connection_string": "Endpoint=sb://YOUR-NAMESPACE.servicebus.windows.net/;SharedAccessKeyName=ReadOnlyPolicy;SharedAccessKey=YOUR-KEY",
 
     "_option_2_azure_ad": "Use Azure AD with DefaultAzureCredential (run 'az login' first)",
     "fully_qualified_namespace": "YOUR-NAMESPACE.servicebus.windows.net",

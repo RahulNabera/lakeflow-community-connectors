@@ -22,8 +22,9 @@ connection:
           required: true
           description: >
             Full Azure Service Bus connection string including
-            SharedAccessKeyName and SharedAccessKey. Example:
-            Endpoint=sb://<namespace>.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=<key>
+            SharedAccessKeyName and SharedAccessKey. Use a least-privilege
+            SAS policy with Listen claim only. Example:
+            Endpoint=sb://<namespace>.servicebus.windows.net/;SharedAccessKeyName=ReadOnlyPolicy;SharedAccessKey=<key>
 
     - name: azure_ad
       description: >

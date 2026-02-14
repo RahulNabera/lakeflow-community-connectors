@@ -48,6 +48,11 @@ def test_azure_servicebus_connector():
     parent_dir = Path(__file__).parent
     config_path = parent_dir / "configs" / "dev_config.json"
     table_config_path = parent_dir / "configs" / "dev_table_config.json"
+    if not config_path.exists() or not table_config_path.exists():
+        pytest.skip(
+            "dev_config.json/dev_table_config.json not found. Copy the example files "
+            "under tests/unit/sources/azure_servicebus/configs and fill credentials."
+        )
 
     config = load_config(config_path)
     table_config = load_config(table_config_path)
@@ -73,7 +78,7 @@ def test_azure_servicebus_connector():
 
 def _load_custom_config() -> dict:
     """Load test configuration from dev_config.json."""
-    config_path = Path(__file__).parent.parent / "configs" / "dev_config.json"
+    config_path = Path(__file__).parent / "configs" / "dev_config.json"
     if not config_path.exists():
         pytest.skip(
             "dev_config.json not found. Copy dev_config.example.json to dev_config.json "
@@ -595,6 +600,35 @@ class TestAuthenticationErrorMessages:
                     "credential_type": "invalid_type",
                 }
             )
+
+
+class TestOptionValidation:
+    """Test validation of numeric connector options and offsets."""
+
+    def test_operation_timeout_must_be_positive(self):
+        """operation_timeout must be >= 1."""
+        with pytest.raises(ValueError, match="operation_timeout"):
+            LakeflowConnect._parse_int_option(
+                "0",
+                option_name="operation_timeout",
+                default=60,
+                minimum=1,
+            )
+
+    def test_max_retries_must_be_non_negative(self):
+        """max_retries must be >= 0."""
+        with pytest.raises(ValueError, match="max_retries"):
+            LakeflowConnect._parse_int_option(
+                "-1",
+                option_name="max_retries",
+                default=3,
+                minimum=0,
+            )
+
+    def test_start_offset_sequence_must_be_non_negative(self):
+        """start_offset.sequence_number must be >= 0."""
+        with pytest.raises(ValueError, match="start_offset.sequence_number"):
+            LakeflowConnect._parse_start_sequence({"sequence_number": "-10"})
 
 
 if __name__ == "__main__":

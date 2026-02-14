@@ -19,13 +19,13 @@ Prerequisites:
     pip install azure-servicebus azure-identity pytest pytest-timeout
 
 Run all tests:
-    pytest sources/azure_servicebus/test/stress_test.py -v --timeout=600
+    PYTHONPATH=src pytest tests/unit/sources/azure_servicebus/stress_test.py -v --timeout=600
 
 Run only standard-tier tests:
-    pytest sources/azure_servicebus/test/stress_test.py -v -m "not premium"
+    PYTHONPATH=src pytest tests/unit/sources/azure_servicebus/stress_test.py -v -m "not premium"
 
 Run only premium-tier tests:
-    pytest sources/azure_servicebus/test/stress_test.py -v -m premium --timeout=1800
+    PYTHONPATH=src pytest tests/unit/sources/azure_servicebus/stress_test.py -v -m premium --timeout=1800
 """
 
 import json
@@ -33,16 +33,13 @@ import time
 import base64
 import logging
 import threading
-import sys
-import os
 
 import pytest
 
-# Add project root to path so we can import the connector
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-
-from sources.azure_servicebus.azure_servicebus import LakeflowConnect  # pylint: disable=wrong-import-position
-from sources.azure_servicebus.test.stress_test_utils import (  # pylint: disable=wrong-import-position
+from databricks.labs.community_connector.sources.azure_servicebus.azure_servicebus import (
+    AzureServicebusLakeflowConnect as LakeflowConnect,
+)
+from .stress_test_utils import (
     StressTestResources,
     send_messages_bulk,
     dead_letter_messages,
@@ -599,7 +596,7 @@ class TestErrorResilience:
         """Connection string with invalid key should raise an error on read."""
         bad_cs = (
             "Endpoint=sb://rahuln-azure-service-lakeflow-community-connector."
-            "servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;"
+            "servicebus.windows.net/;SharedAccessKeyName=ReadOnlyPolicy;"
             "SharedAccessKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         )
         connector = LakeflowConnect({"connection_string": bad_cs})
