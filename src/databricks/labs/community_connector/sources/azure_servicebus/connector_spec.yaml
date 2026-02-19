@@ -2,6 +2,8 @@
 # This file defines the specification for the connector including
 # connection parameters and allowlist options.
 
+display_name: Azure Service Bus
+
 # ============================================================================
 # Connection Parameters
 # These are provided when creating the Unity Catalog connection.
@@ -20,6 +22,7 @@ connection:
         - name: connection_string
           type: string
           required: true
+          secret: true
           description: >
             Full Azure Service Bus connection string including
             SharedAccessKeyName and SharedAccessKey. Use a least-privilege
@@ -68,6 +71,7 @@ connection:
         - name: azure_client_secret
           type: string
           required: true
+          secret: true
           description: >
             Service principal client secret.
 

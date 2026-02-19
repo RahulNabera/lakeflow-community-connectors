@@ -36,8 +36,14 @@ from pyspark.sql.types import (
 )
 
 # Azure Service Bus SDK
-from azure.servicebus import ServiceBusClient, ServiceBusSubQueue, ServiceBusSessionFilter  # pylint: disable=import-error
-from azure.servicebus.management import ServiceBusAdministrationClient  # pylint: disable=import-error
+from azure.servicebus import (  # pylint: disable=import-error
+    ServiceBusClient,
+    ServiceBusSubQueue,
+    ServiceBusSessionFilter,
+)
+from azure.servicebus.management import (  # pylint: disable=import-error
+    ServiceBusAdministrationClient,
+)
 from azure.servicebus.exceptions import (  # pylint: disable=import-error
     ServiceBusError,
     ServiceBusConnectionError,
@@ -58,8 +64,8 @@ from azure.core.exceptions import (  # pylint: disable=import-error
     ServiceResponseError,
 )
 
-from databricks.labs.community_connector.interface.lakeflow_connect import (  # pylint: disable=import-error
-    LakeflowConnect,
+from databricks.labs.community_connector.interface.lakeflow_connect import (
+    LakeflowConnect,  # pylint: disable=import-error
 )
 
 logger = logging.getLogger(__name__)
@@ -154,9 +160,13 @@ def _retry_with_backoff(
     raise last_exc  # type: ignore[misc]
 
 
-class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-many-instance-attributes
+# pylint: disable=too-many-instance-attributes
+class AzureServicebusLakeflowConnect(LakeflowConnect):
     """
     Azure Service Bus connector implementing the Lakeflow Community Connector interface.
+
+    Note: This connector is NOT thread-safe. Create separate instances for
+    concurrent access from multiple threads.
     """
 
     # Supported tables
@@ -373,7 +383,8 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
                 f"  1. azure_tenant_id is correct: {self.azure_tenant_id}\n"
                 f"  2. azure_client_id is correct: {self.azure_client_id}\n"
                 f"  3. azure_client_secret is valid and not expired\n"
-                f"  4. The service principal has required RBAC roles on the Service Bus namespace:\n"
+                f"  4. The service principal has required RBAC roles"
+                f" on the Service Bus namespace:\n"
                 f"     - 'Azure Service Bus Data Receiver' or 'Azure Service Bus Data Owner'\n"
                 f"     - 'Reader' role for management operations\n"
                 f"Error: {_safe_error_message(e)}"
@@ -440,7 +451,8 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
             raise ValueError(
                 f"Azure AD authentication failed. Please ensure one of the following:\n"
                 f"  1. Run 'az login' to authenticate with Azure CLI\n"
-                f"  2. Set environment variables: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_SECRET\n"
+                f"  2. Set environment variables: AZURE_CLIENT_ID,"
+                f" AZURE_TENANT_ID, AZURE_CLIENT_SECRET\n"
                 f"  3. Use managed identity in Azure environment\n"
                 f"  4. Use service_principal credential_type with explicit credentials\n\n"
                 f"After authenticating, ensure the identity has required RBAC roles:\n"
@@ -454,9 +466,11 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
                 raise ValueError(
                     f"No Azure credentials found. Please authenticate using one of:\n"
                     f"  1. Azure CLI: Run 'az login' and 'az account set -s <subscription-id>'\n"
-                    f"  2. Environment variables: Set AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_SECRET\n"
+                    f"  2. Environment variables: Set AZURE_CLIENT_ID,"
+                    f" AZURE_TENANT_ID, AZURE_CLIENT_SECRET\n"
                     f"  3. Managed Identity: Deploy to Azure with managed identity enabled\n"
-                    f"  4. Service Principal: Use credential_type='service_principal' with explicit credentials\n"
+                    f"  4. Service Principal: Use credential_type="
+                    f"'service_principal' with explicit credentials\n"
                     f"Error: {_safe_error_message(e)}"
                 ) from e
             raise ValueError(
@@ -483,7 +497,8 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
             error_str = str(e).lower()
             if "unauthorized" in error_str or "403" in error_str:
                 raise ValueError(
-                    f"Authorization failed. The authenticated identity does not have required permissions.\n"
+                    f"Authorization failed. The authenticated identity"
+                    f" does not have required permissions.\n"
                     f"Assign these RBAC roles to the identity on the Service Bus namespace:\n"
                     f"  - 'Azure Service Bus Data Receiver' for reading messages\n"
                     f"  - 'Azure Service Bus Data Owner' for full access\n"
@@ -655,6 +670,8 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
         Returns:
             Tuple of (iterator of records, next offset)
         """
+        if self._closed:
+            raise ValueError("Connector has been closed")
         if table_name not in self.SUPPORTED_TABLES:
             raise ValueError(f"Unsupported table: {table_name}")
 
@@ -1056,7 +1073,8 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):  # pylint: disable=too-ma
 
         return last_sequence
 
-    def _read_queue_messages(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    def _read_queue_messages(
         self, start_offset: dict, table_options: dict[str, str]
     ) -> tuple[Iterator[dict], dict]:
         """Read messages from a queue using peek (non-destructive).
