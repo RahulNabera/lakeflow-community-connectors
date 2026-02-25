@@ -1,0 +1,7 @@
+{
+    "fully_qualified_namespace": "rahuln-azure-service-lakeflow-community-connector.servicebus.windows.net",
+    "credential_type": "azure_ad",
+    "test_queue_name": "lakeflow-test-queue",
+    "test_topic_name": "lakeflow-test-topic",
+    "test_subscription_name": "lakeflow-test-subscription"
+}

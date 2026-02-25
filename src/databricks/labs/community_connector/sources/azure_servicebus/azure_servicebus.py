@@ -91,10 +91,22 @@ _TRANSIENT_EXCEPTIONS = (
 _SENSITIVE_VALUE_PATTERNS = (
     re.compile(r"(?i)(sharedaccesskey=)([^;\s]+)"),
     re.compile(r"(?i)(accountkey=)([^;\s]+)"),
-    re.compile(r"(?i)(azure_client_secret=)([^;\s]+)"),
+    re.compile(
+        r"(?i)(azure_client_secret=)([^;\s]+)"
+    ),
     re.compile(r"(?i)(client_secret=)([^;\s]+)"),
     re.compile(r"(?i)(password=)([^;\s]+)"),
     re.compile(r"(?i)(sig=)([^&\s]+)"),
+    re.compile(r"(?i)(access_token=)([^;\s&]+)"),
+    re.compile(
+        r"(?i)(Bearer\s+)([A-Za-z0-9._\-]+)"
+    ),
+)
+
+# JWT tokens: base64url header.payload.signature
+_JWT_PATTERN = re.compile(
+    r"eyJ[A-Za-z0-9_-]{10,}"
+    r"(?:\.[A-Za-z0-9_-]{10,}){1,2}"
 )
 
 
@@ -103,6 +115,7 @@ def _redact_sensitive_values(message: str) -> str:
     redacted = message
     for pattern in _SENSITIVE_VALUE_PATTERNS:
         redacted = pattern.sub(r"\1***", redacted)
+    redacted = _JWT_PATTERN.sub("***JWT***", redacted)
     return redacted
 
 
@@ -193,6 +206,7 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
         option_name: str,
         default: int,
         minimum: int,
+        maximum: Optional[int] = None,
     ) -> int:
         """Parse and validate integer connector options."""
         if value in (None, ""):
@@ -201,11 +215,18 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
             parsed = int(value)
         except (TypeError, ValueError) as exc:
             raise ValueError(
-                f"{option_name} must be an integer greater than or equal to {minimum}"
+                f"{option_name} must be an integer"
+                f" >= {minimum}"
             ) from exc
         if parsed < minimum:
             raise ValueError(
-                f"{option_name} must be an integer greater than or equal to {minimum}"
+                f"{option_name} must be an integer"
+                f" >= {minimum}"
+            )
+        if maximum is not None and parsed > maximum:
+            raise ValueError(
+                f"{option_name} must not exceed"
+                f" {maximum}"
             )
         return parsed
 
@@ -230,6 +251,37 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
                 "start_offset.sequence_number must be an integer greater than or equal to 0"
             )
         return sequence_number
+
+    @staticmethod
+    def _validate_entity_name(
+        name: Any, param_name: str
+    ) -> None:
+        """Validate Azure Service Bus entity name."""
+        if not name or not isinstance(name, str):
+            raise ValueError(
+                f"{param_name} must be a non-empty string"
+            )
+        if len(name) > 260:
+            raise ValueError(
+                f"{param_name} must not exceed 260 characters"
+            )
+
+    @staticmethod
+    def _validate_session_id(
+        session_id: Any,
+    ) -> None:
+        """Validate session ID if provided."""
+        if session_id is None:
+            return
+        if not isinstance(session_id, str):
+            raise ValueError(
+                "session_id must be a string"
+            )
+        if len(session_id) > 128:
+            raise ValueError(
+                "session_id must not exceed"
+                " 128 characters"
+            )
 
     def __init__(self, options: dict[str, str]) -> None:
         """
@@ -267,24 +319,28 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
             option_name="operation_timeout",
             default=60,
             minimum=1,
+            maximum=300,
         )
         self.max_wait_time = self._parse_int_option(
             options.get("max_wait_time"),
             option_name="max_wait_time",
             default=5,
             minimum=0,
+            maximum=300,
         )
         self.max_retries = self._parse_int_option(
             options.get("max_retries"),
             option_name="max_retries",
             default=3,
             minimum=0,
+            maximum=10,
         )
         self.max_body_size = self._parse_int_option(
             options.get("max_body_size"),
             option_name="max_body_size",
             default=0,
             minimum=0,
+            maximum=1073741824,
         )
         self.debug_mode = options.get("debug_mode", "false").lower() == "true"
 
@@ -297,6 +353,19 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
         self.azure_tenant_id = options.get("azure_tenant_id")
         self.azure_client_id = options.get("azure_client_id")
         self.azure_client_secret = options.get("azure_client_secret")
+
+        # Warn if multiple credential sets provided
+        if (
+            self.connection_string
+            and self.fully_qualified_namespace
+        ):
+            logger.warning(
+                "Multiple credential parameters"
+                " detected: both connection_string"
+                " and fully_qualified_namespace"
+                " are set. connection_string"
+                " takes precedence."
+            )
 
         if self.credential_type == "auto":
             if self.connection_string:
@@ -379,14 +448,19 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
             self._create_clients_with_credential(self._credential)
         except ClientAuthenticationError as e:
             raise ValueError(
-                f"Service principal authentication failed. Please verify:\n"
-                f"  1. azure_tenant_id is correct: {self.azure_tenant_id}\n"
-                f"  2. azure_client_id is correct: {self.azure_client_id}\n"
-                f"  3. azure_client_secret is valid and not expired\n"
-                f"  4. The service principal has required RBAC roles"
-                f" on the Service Bus namespace:\n"
-                f"     - 'Azure Service Bus Data Receiver' or 'Azure Service Bus Data Owner'\n"
-                f"     - 'Reader' role for management operations\n"
+                "Service principal authentication"
+                " failed. Please verify:\n"
+                "  1. azure_tenant_id is correct\n"
+                "  2. azure_client_id is correct\n"
+                "  3. azure_client_secret is valid"
+                " and not expired\n"
+                "  4. The service principal has"
+                " required RBAC roles on the"
+                " Service Bus namespace:\n"
+                "     - 'Azure Service Bus Data"
+                " Receiver' or 'Data Owner'\n"
+                "     - 'Reader' role for"
+                " management operations\n"
                 f"Error: {_safe_error_message(e)}"
             ) from e
         except Exception as e:
@@ -408,7 +482,7 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
                     client_id=self.azure_client_id
                 )
                 logger.info(
-                    f"Using user-assigned managed identity: {self.azure_client_id}"
+                    "Using user-assigned managed identity"
                 )
             else:
                 self._credential = ManagedIdentityCredential()
@@ -425,8 +499,8 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
             )
             if self.azure_client_id:
                 error_msg += (
-                    f"  3. User-assigned managed identity client_id"
-                    f" is correct: {self.azure_client_id}\n"
+                    "  3. User-assigned managed identity"
+                    " client_id is correct\n"
                 )
             error_msg += f"Error: {_safe_error_message(e)}"
             raise ValueError(error_msg) from e
@@ -503,7 +577,6 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
                     f"  - 'Azure Service Bus Data Receiver' for reading messages\n"
                     f"  - 'Azure Service Bus Data Owner' for full access\n"
                     f"  - 'Reader' for listing queues/topics\n"
-                    f"Namespace: {self.fully_qualified_namespace}\n"
                     f"Error: {_safe_error_message(e)}"
                 ) from e
             raise
@@ -513,8 +586,8 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
         try:
             next(iter(self._admin_client.list_queues()), None)
             logger.info(
-                f"Successfully connected to Service Bus namespace: "
-                f"{self.fully_qualified_namespace}"
+                "Successfully connected to"
+                " Service Bus namespace"
             )
         except ClientAuthenticationError:
             raise
@@ -526,18 +599,26 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
                 or "forbidden" in error_str
             ):
                 raise ValueError(
-                    f"Connected to Service Bus but authorization failed.\n"
-                    f"The identity can authenticate but lacks permissions on namespace: "
-                    f"{self.fully_qualified_namespace}\n"
-                    f"Required RBAC roles:\n"
-                    f"  - 'Reader' or 'Contributor' for management operations\n"
-                    f"  - 'Azure Service Bus Data Receiver' for reading messages\n"
+                    "Connected to Service Bus but"
+                    " authorization failed.\n"
+                    "The identity can authenticate"
+                    " but lacks permissions.\n"
+                    "Required RBAC roles:\n"
+                    "  - 'Reader' or 'Contributor'"
+                    " for management operations\n"
+                    "  - 'Azure Service Bus Data"
+                    " Receiver' for reading messages"
+                    "\n"
                     f"Error: {_safe_error_message(e)}"
                 ) from e
-            logger.warning("Could not validate connection: %s", _safe_error_message(e))
+            logger.warning(
+                "Could not validate connection: %s",
+                _safe_error_message(e),
+            )
             raise RuntimeError(
-                f"Failed to validate connection to Service Bus namespace "
-                f"'{self.fully_qualified_namespace}': {_safe_error_message(e)}"
+                "Failed to validate connection"
+                " to Service Bus namespace:"
+                f" {_safe_error_message(e)}"
             ) from e
 
     # =========================================================================
@@ -951,6 +1032,10 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
     ) -> tuple[Iterator[dict], dict]:
         """Read subscriptions from topics."""
         topic_name = table_options.get("topic_name")
+        if topic_name:
+            self._validate_entity_name(
+                topic_name, "topic_name"
+            )
 
         def generate_records():
             if topic_name:
@@ -1087,16 +1172,24 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
         """
         queue_name = table_options.get("queue_name")
         if not queue_name:
-            raise ValueError("queue_name is required for queue_messages table")
+            raise ValueError(
+                "queue_name is required for"
+                " queue_messages table"
+            )
+        self._validate_entity_name(
+            queue_name, "queue_name"
+        )
 
         max_message_count = self._parse_int_option(
             table_options.get("max_message_count"),
             option_name="max_message_count",
             default=100,
             minimum=1,
+            maximum=10000,
         )
         start_sequence = self._parse_start_sequence(start_offset)
-        session_id = table_options.get("session_id")  # optional
+        session_id = table_options.get("session_id")
+        self._validate_session_id(session_id)
 
         last_sequence = start_sequence
         records: list[dict] = []
@@ -1200,18 +1293,29 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
     ) -> tuple[Iterator[dict], dict]:
         """Read messages from a topic subscription using peek (non-destructive)."""
         topic_name = table_options.get("topic_name")
-        subscription_name = table_options.get("subscription_name")
+        subscription_name = table_options.get(
+            "subscription_name"
+        )
 
         if not topic_name or not subscription_name:
             raise ValueError(
-                "topic_name and subscription_name are required for subscription_messages table"
+                "topic_name and subscription_name"
+                " are required for"
+                " subscription_messages table"
             )
+        self._validate_entity_name(
+            topic_name, "topic_name"
+        )
+        self._validate_entity_name(
+            subscription_name, "subscription_name"
+        )
 
         max_message_count = self._parse_int_option(
             table_options.get("max_message_count"),
             option_name="max_message_count",
             default=100,
             minimum=1,
+            maximum=10000,
         )
         start_sequence = self._parse_start_sequence(start_offset)
 
@@ -1293,6 +1397,7 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
             option_name="max_message_count",
             default=100,
             minimum=1,
+            maximum=10000,
         )
         start_sequence = self._parse_start_sequence(start_offset)
 
@@ -1305,8 +1410,12 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
             queue_name = table_options.get("queue_name")
             if not queue_name:
                 raise ValueError(
-                    "queue_name is required when source_type is 'queue'"
+                    "queue_name is required when"
+                    " source_type is 'queue'"
                 )
+            self._validate_entity_name(
+                queue_name, "queue_name"
+            )
             source_name = queue_name
             receiver_ctx = self._client.get_queue_receiver(
                 queue_name,
@@ -1314,12 +1423,21 @@ class AzureServicebusLakeflowConnect(LakeflowConnect):
             )
         else:
             topic_name = table_options.get("topic_name")
-            subscription_name = table_options.get("subscription_name")
+            subscription_name = table_options.get(
+                "subscription_name"
+            )
             if not topic_name or not subscription_name:
                 raise ValueError(
-                    "topic_name and subscription_name are required when "
-                    "source_type is 'subscription'"
+                    "topic_name and subscription_name"
+                    " are required when"
+                    " source_type is 'subscription'"
                 )
+            self._validate_entity_name(
+                topic_name, "topic_name"
+            )
+            self._validate_entity_name(
+                subscription_name, "subscription_name"
+            )
             source_name = f"{topic_name}/{subscription_name}"
             receiver_ctx = self._client.get_subscription_receiver(
                 topic_name,
